@@ -108,6 +108,9 @@ class DispatchTaskResponse(BaseModel):
     provider: str
     mode_used: str
     output: str
+    command_flow: list[str] = Field(default_factory=list)
+    executed: bool = False
+    prompt_sent: str = ""
 
 
 class DispatchManyTaskRequest(BaseModel):

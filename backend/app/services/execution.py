@@ -38,3 +38,184 @@ def run_shell(repo_path: str, command: str, timeout_seconds: int = 120) -> tuple
     )
     output = ((completed.stdout or "") + "\n" + (completed.stderr or "")).strip()
     return completed.returncode, output
+
+
+def scaffold_snake_game_if_requested(repo_path: str, goal: str) -> list[str]:
+    text = goal.lower()
+    if "snake" not in text or "game" not in text:
+        return []
+
+    root = Path(repo_path)
+    game_dir = root / "snake-game"
+    game_dir.mkdir(parents=True, exist_ok=True)
+
+    html = game_dir / "index.html"
+    css = game_dir / "styles.css"
+    js = game_dir / "game.js"
+
+    html.write_text(
+        """<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Snake Game</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="wrap">
+      <h1>Snake Game</h1>
+      <p>Use arrow keys to move. Eat food to grow.</p>
+      <div class="hud">
+        <span id="score">Score: 0</span>
+        <button id="restartBtn">Restart</button>
+      </div>
+      <canvas id="board" width="400" height="400"></canvas>
+    </main>
+    <script src="./game.js"></script>
+  </body>
+</html>
+""",
+        encoding="utf-8",
+    )
+
+    css.write_text(
+        """body {
+  margin: 0;
+  font-family: system-ui, -apple-system, sans-serif;
+  background: #111827;
+  color: #f9fafb;
+}
+
+.wrap {
+  max-width: 460px;
+  margin: 24px auto;
+  text-align: center;
+}
+
+.hud {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin: 12px 0;
+}
+
+canvas {
+  border: 2px solid #4b5563;
+  background: #0b1020;
+}
+
+button {
+  background: #2563eb;
+  color: #fff;
+  border: none;
+  padding: 8px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+""",
+        encoding="utf-8",
+    )
+
+    js.write_text(
+        """const canvas = document.getElementById("board");
+const ctx = canvas.getContext("2d");
+const scoreEl = document.getElementById("score");
+const restartBtn = document.getElementById("restartBtn");
+
+const grid = 20;
+const tileCount = canvas.width / grid;
+
+let snake;
+let food;
+let direction;
+let score;
+let gameOver;
+let timer;
+
+function resetGame() {
+  snake = [{ x: 10, y: 10 }];
+  food = spawnFood();
+  direction = { x: 1, y: 0 };
+  score = 0;
+  gameOver = false;
+  scoreEl.textContent = "Score: 0";
+  clearInterval(timer);
+  timer = setInterval(tick, 120);
+}
+
+function spawnFood() {
+  while (true) {
+    const pos = {
+      x: Math.floor(Math.random() * tileCount),
+      y: Math.floor(Math.random() * tileCount),
+    };
+    if (!snake || !snake.some((p) => p.x === pos.x && p.y === pos.y)) return pos;
+  }
+}
+
+function tick() {
+  if (gameOver) return;
+  const head = { x: snake[0].x + direction.x, y: snake[0].y + direction.y };
+
+  if (head.x < 0 || head.y < 0 || head.x >= tileCount || head.y >= tileCount) {
+    gameOver = true;
+  }
+  if (snake.some((p) => p.x === head.x && p.y === head.y)) {
+    gameOver = true;
+  }
+  if (gameOver) {
+    draw();
+    return;
+  }
+
+  snake.unshift(head);
+  if (head.x === food.x && head.y === food.y) {
+    score += 1;
+    scoreEl.textContent = `Score: ${score}`;
+    food = spawnFood();
+  } else {
+    snake.pop();
+  }
+  draw();
+}
+
+function draw() {
+  ctx.fillStyle = "#0b1020";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  ctx.fillStyle = "#22c55e";
+  snake.forEach((part) => {
+    ctx.fillRect(part.x * grid, part.y * grid, grid - 1, grid - 1);
+  });
+
+  ctx.fillStyle = "#ef4444";
+  ctx.fillRect(food.x * grid, food.y * grid, grid - 1, grid - 1);
+
+  if (gameOver) {
+    ctx.fillStyle = "rgba(0,0,0,0.6)";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = "#fff";
+    ctx.font = "24px sans-serif";
+    ctx.fillText("Game Over", 135, 190);
+  }
+}
+
+window.addEventListener("keydown", (e) => {
+  if (e.key === "ArrowUp" && direction.y !== 1) direction = { x: 0, y: -1 };
+  if (e.key === "ArrowDown" && direction.y !== -1) direction = { x: 0, y: 1 };
+  if (e.key === "ArrowLeft" && direction.x !== 1) direction = { x: -1, y: 0 };
+  if (e.key === "ArrowRight" && direction.x !== -1) direction = { x: 1, y: 0 };
+});
+
+restartBtn.addEventListener("click", resetGame);
+resetGame();
+""",
+        encoding="utf-8",
+    )
+
+    return [
+        str(html.relative_to(root)),
+        str(css.relative_to(root)),
+        str(js.relative_to(root)),
+    ]

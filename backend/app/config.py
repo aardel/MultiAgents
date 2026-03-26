@@ -1,5 +1,15 @@
 import os
 
+# Load repo-local `.env` (if present) so provider API keys can be configured
+# without requiring manual `export` in every shell.
+try:
+    from dotenv import load_dotenv
+
+    load_dotenv()
+except Exception:
+    # If python-dotenv isn't available or parsing fails, fall back to existing env vars.
+    pass
+
 
 def app_env() -> str:
     return os.environ.get("AGENT_ORCH_ENV", "development").strip().lower()

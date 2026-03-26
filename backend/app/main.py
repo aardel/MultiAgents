@@ -46,7 +46,11 @@ from app.models import (
     TaskStatus,
 )
 from app.config import allowed_origins, api_key, previous_api_key, validate_runtime_config
-from app.services.execution import detect_test_command, run_shell, write_task_note
+from app.services.execution import (
+    detect_test_command,
+    run_shell,
+    write_task_note,
+)
 from app.services.git_service import (
     changed_files,
     checkout_task_branch,
@@ -351,17 +355,35 @@ def dispatch_task(
     _: None = Depends(require_api_key),
 ) -> DispatchTaskResponse:
     task = _get_task_or_404(task_id)
+    repo_path = None
+    if get_value("connected_mode") == "local":
+        repo_path = get_value("connected_path")
+    if repo_path and ensure_git_repo(repo_path):
+        branch = task.branch_name or create_feature_branch(task.task_id)
+        checkout_task_branch(repo_path, branch)
     try:
-        result = dispatch_task_to_provider(task, payload.provider, payload.mode)
+        result = dispatch_task_to_provider(task, payload.provider, payload.mode, repo_path)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     add_task_event(
         task_id,
         "task_dispatched",
-        f"Provider={result.provider} mode={result.mode_used}: {result.output}",
+        (
+            f"Provider={result.provider} mode={result.mode_used}: {result.output}"
+            + (
+                f" | flow: {' ; '.join(result.command_flow)}"
+                if result.command_flow
+                else ""
+            )
+        ),
     )
-    task.execution_log.append(result.output)
-    save_task(task)
+    latest = _get_task_or_404(task_id)
+    latest.execution_log.append(result.output)
+    if result.command_flow:
+        latest.execution_log.append(
+            f"[dispatch-flow] {result.provider}: " + " | ".join(result.command_flow)
+        )
+    save_task(latest)
     return result
 
 
@@ -372,6 +394,12 @@ def dispatch_task_many(
     _: None = Depends(require_api_key),
 ) -> DispatchManyTaskResponse:
     task = _get_task_or_404(task_id)
+    repo_path = None
+    if get_value("connected_mode") == "local":
+        repo_path = get_value("connected_path")
+    if repo_path and ensure_git_repo(repo_path):
+        branch = task.branch_name or create_feature_branch(task.task_id)
+        checkout_task_branch(repo_path, branch)
     seen: set[str] = set()
     normalized_providers: list[str] = []
     for provider in payload.providers:
@@ -385,22 +413,37 @@ def dispatch_task_many(
         raise HTTPException(status_code=400, detail="No valid providers provided.")
 
     results: list[DispatchTaskResponse] = []
+    log_lines: list[str] = []
     for provider in normalized_providers:
         try:
-            result = dispatch_task_to_provider(task, provider, payload.mode)
+            result = dispatch_task_to_provider(task, provider, payload.mode, repo_path)
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         add_task_event(
             task_id,
             "task_dispatched",
-            f"Provider={result.provider} mode={result.mode_used}: {result.output}",
+            (
+                f"Provider={result.provider} mode={result.mode_used}: {result.output}"
+                + (
+                    f" | flow: {' ; '.join(result.command_flow)}"
+                    if result.command_flow
+                    else ""
+                )
+            ),
         )
-        task.execution_log.append(
+        log_lines.append(
             f"[multi-dispatch] Provider={result.provider} mode={result.mode_used}: {result.output}"
         )
+        if result.command_flow:
+            log_lines.append(
+                f"[multi-dispatch-flow] {result.provider}: "
+                + " | ".join(result.command_flow)
+            )
         results.append(result)
 
-    save_task(task)
+    latest = _get_task_or_404(task_id)
+    latest.execution_log.extend(log_lines)
+    save_task(latest)
     return DispatchManyTaskResponse(task_id=task_id, mode=payload.mode, results=results)
 
 

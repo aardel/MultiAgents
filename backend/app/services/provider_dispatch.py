@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
+import shlex
 
 from app.models import DispatchTaskResponse, TaskState
 
@@ -16,11 +17,33 @@ PROVIDER_MAP = {
     "cursor": {"cli": "cursor-agent", "api_env": "CURSOR_API_KEY"},
 }
 
+PROVIDER_CAPABILITIES = {
+    "claude": "frontend UX, product copy, refactors",
+    "codex": "code implementation, repo edits, CLI-heavy tasks",
+    "gemini": "tests, analysis, documentation polish",
+    "openai": "general implementation and reasoning",
+    "copilot": "code suggestions and fast scaffolding",
+    "cursor": "editor-driven implementation workflows",
+}
 
-def _run_cli_probe(cli: str) -> tuple[bool, str]:
+CLI_EXEC_CANDIDATES = {
+    "codex": [
+        ["codex", "exec", "--sandbox", "workspace-write", "{prompt}"],
+        ["codex", "exec", "--sandbox", "workspace-write", "-p", "{prompt}"],
+    ],
+    "claude": [["claude", "-p", "{prompt}"], ["claude", "{prompt}"]],
+    "gemini": [["gemini", "-p", "{prompt}"], ["gemini", "{prompt}"]],
+    "openai": [["openai", "api", "responses.create", "--input", "{prompt}"]],
+    "copilot": [["gh", "copilot", "suggest", "{prompt}"]],
+    "cursor": [["cursor-agent", "-p", "{prompt}"], ["cursor-agent", "{prompt}"]],
+}
+
+
+def _run_cli_probe(cli: str) -> tuple[bool, str, str]:
     if shutil.which(cli) is None:
-        return False, f"CLI '{cli}' is not installed."
+        return False, f"{cli} --version", f"CLI '{cli}' is not installed."
     try:
+        command = f"{cli} --version"
         completed = subprocess.run(
             [cli, "--version"],
             capture_output=True,
@@ -28,15 +51,58 @@ def _run_cli_probe(cli: str) -> tuple[bool, str]:
             timeout=10,
         )
         output = ((completed.stdout or "") + "\n" + (completed.stderr or "")).strip()
-        return True, output or f"{cli} is available."
+        return True, command, output or f"{cli} is available."
     except Exception as exc:  # pragma: no cover - defensive
-        return False, f"CLI probe failed: {exc}"
+        return False, f"{cli} --version", f"CLI probe failed: {exc}"
+
+
+def _build_provider_prompt(task: TaskState, provider: str) -> str:
+    capability = PROVIDER_CAPABILITIES.get(provider, "general coding tasks")
+    return (
+        f"You are provider '{provider}' focused on {capability}. "
+        f"Work on this repository task: {task.user_goal}. "
+        "Make concrete code changes in the current repository, "
+        "prefer small safe commits, and include tests where reasonable."
+    )
+
+
+def _attempt_cli_execution(
+    provider: str,
+    prompt: str,
+    repo_path: str,
+    flow: list[str],
+) -> tuple[bool, str]:
+    candidates = CLI_EXEC_CANDIDATES.get(provider, [])
+    if not candidates:
+        flow.append("no_cli_exec_templates")
+        return False, ""
+
+    for template in candidates:
+        args = [part.replace("{prompt}", prompt) for part in template]
+        flow.append("try_exec: " + shlex.join(args))
+        try:
+            completed = subprocess.run(
+                args,
+                cwd=repo_path,
+                capture_output=True,
+                text=True,
+                timeout=120,
+            )
+            output = ((completed.stdout or "") + "\n" + (completed.stderr or "")).strip()
+            flow.append(f"exec_exit_code={completed.returncode}")
+            if completed.returncode == 0:
+                return True, output
+        except Exception as exc:  # pragma: no cover - defensive
+            flow.append(f"exec_error={exc}")
+            continue
+    return False, ""
 
 
 def dispatch_task_to_provider(
     task: TaskState,
     provider: str,
     mode: str = "auto",
+    repo_path: str | None = None,
 ) -> DispatchTaskResponse:
     key = provider.strip().lower()
     if key not in PROVIDER_MAP:
@@ -46,37 +112,87 @@ def dispatch_task_to_provider(
     cli = spec["cli"]
     api_env = spec["api_env"]
     has_api = bool(os.environ.get(api_env, "").strip())
+    flow: list[str] = [f"provider={key}", f"requested_mode={mode}", f"cli={cli}", f"api_env={api_env}"]
+    allow_execution = key == "codex" or has_api
 
     mode_used = mode
     output = ""
+    prompt_sent = _build_provider_prompt(task, key)
+    executed = False
     if mode == "auto":
-        ok, probe = _run_cli_probe(cli)
+        ok, command, probe = _run_cli_probe(cli)
+        flow.append(f"run: {command}")
+        flow.append(f"cli_probe_ok={ok}")
         if ok:
             mode_used = "cli"
             output = f"Dispatched via {provider} CLI. Probe output: {probe}"
+            flow.append("mode_selected=cli")
+            if repo_path:
+                if allow_execution:
+                    ran, exec_output = _attempt_cli_execution(
+                        key, prompt_sent, repo_path, flow
+                    )
+                    executed = ran
+                    if ran:
+                        excerpt = exec_output[:1200] if exec_output else "(no output)"
+                        output = (
+                            f"Executed via {provider} CLI with workload prompt. "
+                            f"Output excerpt: {excerpt}"
+                        )
+                else:
+                    flow.append("skip_exec_missing_api_env=true")
+                    output = (
+                        f"Dispatched via {provider} CLI (probe ok), but workload exec "
+                        f"skipped: missing env var {api_env}."
+                    )
         elif has_api:
             mode_used = "api"
             output = f"Dispatched via {provider} API credentials ({api_env})."
+            flow.append("mode_selected=api")
         else:
             mode_used = "not_configured"
             output = (
                 f"Cannot dispatch to {provider}. Missing CLI and {api_env} is not configured."
             )
+            flow.append("mode_selected=not_configured")
     elif mode == "cli":
-        ok, probe = _run_cli_probe(cli)
+        ok, command, probe = _run_cli_probe(cli)
+        flow.append(f"run: {command}")
+        flow.append(f"cli_probe_ok={ok}")
         mode_used = "cli"
         output = (
             f"Dispatched via {provider} CLI. Probe output: {probe}"
             if ok
             else f"CLI dispatch failed: {probe}"
         )
+        flow.append("mode_selected=cli")
+        if ok and repo_path:
+            if allow_execution:
+                ran, exec_output = _attempt_cli_execution(
+                    key, prompt_sent, repo_path, flow
+                )
+                executed = ran
+                if ran:
+                    excerpt = exec_output[:1200] if exec_output else "(no output)"
+                    output = (
+                        f"Executed via {provider} CLI with workload prompt. "
+                        f"Output excerpt: {excerpt}"
+                    )
+            else:
+                flow.append("skip_exec_missing_api_env=true")
+                output = (
+                    f"Dispatched via {provider} CLI (probe ok), but workload exec "
+                    f"skipped: missing env var {api_env}."
+                )
     elif mode == "api":
         mode_used = "api"
+        flow.append(f"api_key_present={has_api}")
         output = (
             f"Dispatched via {provider} API credentials ({api_env})."
             if has_api
             else f"API dispatch failed: missing env var {api_env}."
         )
+        flow.append("mode_selected=api")
     else:
         raise ValueError("mode must be one of: auto, cli, api")
 
@@ -85,4 +201,7 @@ def dispatch_task_to_provider(
         provider=provider,
         mode_used=mode_used,
         output=output,
+        command_flow=flow,
+        executed=executed,
+        prompt_sent=prompt_sent,
     )
