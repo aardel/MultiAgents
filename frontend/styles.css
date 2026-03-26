@@ -1,0 +1,114 @@
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background: #0b1020;
+  color: #e6edf7;
+}
+
+.container {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 24px;
+}
+
+h1 {
+  margin-bottom: 8px;
+}
+
+.sub {
+  color: #b9c4d8;
+  margin-bottom: 20px;
+}
+
+.card {
+  background: #111833;
+  border: 1px solid #253156;
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 16px;
+}
+
+.timeline {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+
+.stage {
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid #31426f;
+  font-size: 13px;
+}
+
+.stage.pending {
+  background: #0c1738;
+  color: #b7c3da;
+}
+
+.stage.active {
+  background: #18367c;
+  border-color: #4d79dd;
+  color: #e8efff;
+}
+
+.stage.done {
+  background: #123324;
+  border-color: #2f8e5f;
+  color: #dbffed;
+}
+
+.stage.error {
+  background: #3a1a20;
+  border-color: #a44a5f;
+  color: #ffdce3;
+}
+
+.status-message {
+  margin-top: 0;
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid #33497e;
+  background: #0d1b44;
+  color: #dfe9ff;
+}
+
+.row {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 220px;
+  flex: 1;
+}
+
+input,
+select,
+textarea,
+button {
+  border-radius: 8px;
+  border: 1px solid #34457b;
+  background: #0d1530;
+  color: #e6edf7;
+  padding: 8px 10px;
+}
+
+button {
+  cursor: pointer;
+}
+
+pre {
+  background: #0a122b;
+  border: 1px solid #27335b;
+  border-radius: 8px;
+  padding: 10px;
+  overflow: auto;
+}

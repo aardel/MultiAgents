@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Agent Orchestration MVP</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="container">
+      <h1>AI Project Manager (MVP)</h1>
+      <p class="sub">
+        Describe your goal. The manager breaks work into steps and shows progress in plain
+        language.
+      </p>
+
+      <section class="card">
+        <h2>1) Connect Project</h2>
+        <div class="row">
+          <label>
+            Mode
+            <select id="projectType">
+              <option value="local">Local</option>
+              <option value="ssh">SSH</option>
+            </select>
+          </label>
+          <label>
+            Local Path
+            <input id="localPath" placeholder="/Users/you/my-project" />
+          </label>
+        </div>
+        <div class="row">
+          <label>
+            SSH User
+            <input id="sshUser" placeholder="ubuntu" />
+          </label>
+          <label>
+            SSH Host
+            <input id="sshHost" placeholder="10.0.0.3" />
+          </label>
+          <label>
+            SSH Path
+            <input id="sshPath" placeholder="/srv/app" />
+          </label>
+        </div>
+        <button id="connectBtn">Connect</button>
+        <pre id="connectOutput"></pre>
+      </section>
+
+      <section class="card">
+        <h2>2) Start Task</h2>
+        <div id="timeline" class="timeline">
+          <div class="stage pending" data-stage="planning">Planning</div>
+          <div class="stage pending" data-stage="executing">Executing</div>
+          <div class="stage pending" data-stage="committing">Committing</div>
+          <div class="stage pending" data-stage="pr">PR Created</div>
+        </div>
+        <p id="statusMessage" class="status-message">
+          Start by creating a task. I will guide you through each step.
+        </p>
+        <div class="row">
+          <label>
+            Project Label
+            <input id="projectLabel" placeholder="My Ecommerce App" />
+          </label>
+        </div>
+        <label>
+          Goal
+          <textarea id="goal" rows="4" placeholder="Add a login page with tests"></textarea>
+        </label>
+        <div class="row">
+          <label>
+            Base Branch for PR
+            <input id="baseBranch" value="main" />
+          </label>
+        </div>
+        <div class="row">
+          <button id="startTaskBtn">Create Task</button>
+          <button id="advanceBtn" disabled>Advance Stage</button>
+          <button id="executeLocalBtn" disabled>Execute Local</button>
+          <button id="commitBtn" disabled>Commit Changes</button>
+          <button id="preparePrBtn" disabled>Prepare PR Draft</button>
+          <button id="createPrBtn" disabled>Create GitHub PR</button>
+          <button id="runAllBtn" disabled>Run All</button>
+          <button id="fixBtn" disabled>Fix It For Me</button>
+        </div>
+        <pre id="taskOutput"></pre>
+      </section>
+    </main>
+
+    <script src="./app.js"></script>
+  </body>
+</html>
