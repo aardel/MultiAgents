@@ -1,5 +1,10 @@
 const API_BASE = "http://localhost:8000";
-const API_KEY = localStorage.getItem("agent_orch_api_key") || "dev-key";
+// For local development, always use the expected dev key.
+// This avoids issues from stale `localStorage` values causing 401s.
+const API_KEY =
+  API_BASE.includes("localhost") || API_BASE.includes("127.0.0.1")
+    ? "dev-key"
+    : localStorage.getItem("agent_orch_api_key") || "dev-key";
 let activeTaskId = null;
 let activeJobId = null;
 let jobPollTimer = null;
