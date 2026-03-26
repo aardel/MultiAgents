@@ -2,6 +2,21 @@
 
 Beginner-first starter project for orchestrating multiple AI coding agents behind a single manager workflow.
 
+## Project objectives
+
+- Provide a practical reference implementation for managing multi-agent coding workflows through one control plane.
+- Reduce manual orchestration overhead by turning a plain-English goal into an executable, auditable task lifecycle.
+- Keep operations safe and production-minded with API keys, request tracing, rate limiting, and structured logs.
+- Support both local and SSH-connected repositories so teams can adopt incrementally without major infrastructure changes.
+- Produce review-ready development output (branch changes, test signals, commit flow, and PR draft support) for human approval.
+
+### Success criteria
+
+- A new user can run the stack locally in minutes and create a task end-to-end.
+- Each task has visible state transitions, event history, and reproducible outputs.
+- Generated code changes stay isolated to task branches and can be reviewed before merge.
+- CI validates core backend behavior on every push and pull request.
+
 ## What this includes
 
 - FastAPI backend for:
@@ -83,6 +98,7 @@ Backend will be available at `http://localhost:8000`.
 - Tasks can be dispatched through provider adapters via `/api/tasks/{task_id}/dispatch`.
 - SSH-connected tasks can run remote commands via `/api/tasks/{task_id}/execute-ssh`.
 - GitHub PR status/merge automation is available via `/api/github/pr-status` and `/api/github/merge-pr`.
+- Long-running work can run asynchronously via `/api/tasks/{task_id}/jobs` and `/api/jobs/{job_id}`.
 - `GET /health` remains open for infra health checks.
 
 ## Production Test
@@ -128,3 +144,5 @@ GitHub Actions workflow at `.github/workflows/ci.yml` runs backend tests on push
 - Add GitHub PR creation and CI checks
 - Add richer auth and role-based access
 - Expand backend test coverage
+
+See `PROJECT_OBJECTIVES.md` for a concise problem statement, scope boundaries, and phased roadmap.
