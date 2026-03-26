@@ -13,7 +13,7 @@ Use this guide to continue development on a new machine with minimal setup.
 
 ```bash
 git clone <YOUR_REPO_URL>
-cd "AGENT ORCHESTRATION"
+cd MultiAgents
 ```
 
 Open this folder in Cursor.
@@ -48,12 +48,21 @@ powershell -ExecutionPolicy Bypass -File .\scripts\bootstrap_dev.ps1
 
 ## 5) Run the app
 
-Backend:
+Backend (macOS/Linux):
 
 ```bash
 cd backend
 source .venv/bin/activate
 export AGENT_ORCH_API_KEY=dev-key
+uvicorn app.main:app --reload --port 8000
+```
+
+Backend (Windows PowerShell):
+
+```powershell
+cd backend
+.\.venv\Scripts\Activate.ps1
+$env:AGENT_ORCH_API_KEY="dev-key"
 uvicorn app.main:app --reload --port 8000
 ```
 
@@ -75,5 +84,13 @@ Backend tests:
 ```bash
 cd backend
 source .venv/bin/activate
+pytest -q
+```
+
+Backend tests (Windows PowerShell):
+
+```powershell
+cd backend
+.\.venv\Scripts\Activate.ps1
 pytest -q
 ```

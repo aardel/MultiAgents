@@ -39,7 +39,20 @@ Beginner-first starter project for orchestrating multiple AI coding agents behin
 
 For moving this project to another PC, see `SETUP.md`.
 
-### 1) Backend
+### 1) Configure environment
+
+From repo root:
+
+```bash
+cp .env.example .env
+```
+
+Set at least:
+
+- `AGENT_ORCH_ENV=development`
+- `AGENT_ORCH_API_KEY=dev-key`
+
+### 2) Backend (macOS/Linux)
 
 ```bash
 cd backend
@@ -50,14 +63,25 @@ export AGENT_ORCH_API_KEY=dev-key
 uvicorn app.main:app --reload --port 8000
 ```
 
-### 2) Frontend
+Backend (Windows PowerShell):
+
+```powershell
+cd backend
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+$env:AGENT_ORCH_API_KEY="dev-key"
+uvicorn app.main:app --reload --port 8000
+```
+
+### 3) Frontend
 
 Open `frontend/index.html` in your browser.
 
 By default it calls `http://localhost:8000`.
 By default frontend uses API key `dev-key` (for local development).
 
-### 3) Smoke test
+### 4) Smoke test
 
 ```bash
 chmod +x scripts/smoke_test.sh
@@ -65,7 +89,14 @@ export AGENT_ORCH_API_KEY=dev-key
 ./scripts/smoke_test.sh
 ```
 
-### 4) Backend tests
+Windows (Git Bash from PowerShell, or WSL):
+
+```powershell
+$env:AGENT_ORCH_API_KEY="dev-key"
+bash .\scripts\smoke_test.sh
+```
+
+### 5) Backend tests
 
 ```bash
 cd backend
@@ -75,7 +106,17 @@ pip install -r requirements.txt
 pytest -q
 ```
 
-### 5) Bootstrap scripts
+Windows PowerShell:
+
+```powershell
+cd backend
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+pytest -q
+```
+
+### 6) Bootstrap scripts
 
 macOS/Linux:
 
