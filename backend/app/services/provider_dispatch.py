@@ -35,15 +35,11 @@ CLI_EXEC_CANDIDATES = {
         [
             "claude",
             "--permission-mode",
-            "auto_edit",
-            "--tools",
-            "Bash,Edit,Read",
-            "--allowed-tools",
-            "Bash(git:*),Edit,Read",
+            "acceptEdits",
             "-p",
             "{prompt}",
         ],
-        ["claude", "--permission-mode", "auto_edit", "-p", "{prompt}"],
+        ["claude", "--permission-mode", "bypassPermissions", "-p", "{prompt}"],
     ],
     "gemini": [
         ["gemini", "--approval-mode", "auto_edit", "-p", "{prompt}"],
