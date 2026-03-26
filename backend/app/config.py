@@ -31,9 +31,22 @@ def previous_api_key() -> str:
 def allowed_origins() -> list[str]:
     raw = os.environ.get("AGENT_ORCH_ALLOWED_ORIGINS", "").strip()
     if raw:
-        return [item.strip() for item in raw.split(",") if item.strip()]
+        origins = [item.strip() for item in raw.split(",") if item.strip()]
+        # Always allow the local UI during development.
+        if app_env() == "development":
+            origins.extend(["http://127.0.0.1:5501", "http://localhost:5501"])
+        # De-dup while preserving order.
+        deduped = []
+        seen = set()
+        for o in origins:
+            if o and o not in seen:
+                seen.add(o)
+                deduped.append(o)
+        return deduped
     if app_env() == "development":
-        return ["*"]
+        # Use explicit local origins rather than "*" because we set
+        # allow_credentials=True in the CORS middleware.
+        return ["http://127.0.0.1:5501", "http://localhost:5501"]
     # Safe fallback for production-like mode.
     return []
 
