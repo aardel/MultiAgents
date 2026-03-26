@@ -121,6 +121,19 @@ def _attempt_cli_execution(
     return False, ""
 
 
+def _format_provider_exec_output(exec_output: str, max_chars: int = 20000) -> str:
+    """
+    Keep provider CLI output readable by returning head + tail when oversized.
+    This mimics the "terminal transcript" feel without dumping arbitrarily huge logs.
+    """
+    text = (exec_output or "").strip()
+    if len(text) <= max_chars:
+        return text
+    head = text[: int(max_chars * 0.55)]
+    tail = text[-int(max_chars * 0.45) :]
+    return head + "\n\n... [output truncated] ...\n\n" + tail
+
+
 def dispatch_task_to_provider(
     task: TaskState,
     provider: str,
@@ -157,7 +170,7 @@ def dispatch_task_to_provider(
                 ran, exec_output = _attempt_cli_execution(key, prompt_sent, repo_path, flow) if allow_execution else (False, "")
                 executed = ran
                 if ran:
-                    excerpt = exec_output[:1200] if exec_output else "(no output)"
+                    excerpt = _format_provider_exec_output(exec_output)
                     output = (
                         f"Executed via {provider} CLI with workload prompt. "
                         f"Output excerpt: {excerpt}"
@@ -187,7 +200,7 @@ def dispatch_task_to_provider(
             ran, exec_output = _attempt_cli_execution(key, prompt_sent, repo_path, flow) if allow_execution else (False, "")
             executed = ran
             if ran:
-                excerpt = exec_output[:1200] if exec_output else "(no output)"
+                excerpt = _format_provider_exec_output(exec_output)
                 output = (
                     f"Executed via {provider} CLI with workload prompt. "
                     f"Output excerpt: {excerpt}"
