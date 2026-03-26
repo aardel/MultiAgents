@@ -312,7 +312,14 @@ function startProvidersLivePolling(jobIdsByProvider) {
           } else {
             const transcript =
               (job.result && (job.result.transcript || job.result)) || "";
-            node.textContent = typeof transcript === "string" ? transcript : JSON.stringify(transcript, null, 2);
+            if (job.status === "running" && (!transcript || transcript.length === 0)) {
+              node.textContent = `RUNNING... (polling provider job ${jobId})`;
+            } else {
+              node.textContent =
+                typeof transcript === "string"
+                  ? transcript
+                  : JSON.stringify(transcript, null, 2);
+            }
           }
         }
 
