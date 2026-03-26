@@ -37,6 +37,8 @@ Beginner-first starter project for orchestrating multiple AI coding agents behin
 
 ## Quick start
 
+For moving this project to another PC, see `SETUP.md`.
+
 ### 1) Backend
 
 ```bash
@@ -71,6 +73,21 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 pytest -q
+```
+
+### 5) Bootstrap scripts
+
+macOS/Linux:
+
+```bash
+chmod +x scripts/bootstrap_dev.sh
+./scripts/bootstrap_dev.sh
+```
+
+Windows PowerShell:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\bootstrap_dev.ps1
 ```
 
 ## Docker Deploy (production-like)
