@@ -47,6 +47,9 @@ def scaffold_snake_game_if_requested(repo_path: str, goal: str) -> list[str]:
 
     root = Path(repo_path)
     game_dir = root / "snake-game"
+    # If providers already created a snake game, don't overwrite it.
+    if (game_dir / "index.html").exists() and (game_dir / "game.js").exists():
+        return []
     game_dir.mkdir(parents=True, exist_ok=True)
 
     html = game_dir / "index.html"

@@ -3,6 +3,8 @@ const API_KEY = localStorage.getItem("agent_orch_api_key") || "dev-key";
 let activeTaskId = null;
 let activeJobId = null;
 let jobPollTimer = null;
+let providersLivePollTimer = null;
+let providersLiveJobs = {};
 const STAGES = ["planning", "executing", "committing", "pr"];
 
 const el = (id) => document.getElementById(id);
@@ -86,6 +88,7 @@ async function createTask() {
   el("fixBtn").disabled = false;
   el("dispatchBtn").disabled = false;
   el("dispatchManyBtn").disabled = false;
+  el("runProvidersLiveBtn").disabled = false;
   el("sshExecBtn").disabled = false;
   el("eventsBtn").disabled = false;
   setTimeline("planning", "active");
@@ -266,6 +269,103 @@ async function dispatchSelectedProviders() {
   el("taskOutput").textContent = pretty(data);
 }
 
+function terminalElForProvider(provider) {
+  return el(`term-${provider}`);
+}
+
+function clearProviderTerminals(providers) {
+  providers.forEach((p) => {
+    const node = terminalElForProvider(p);
+    if (node) node.textContent = "";
+  });
+}
+
+function stopProvidersLivePolling() {
+  if (providersLivePollTimer) {
+    clearInterval(providersLivePollTimer);
+    providersLivePollTimer = null;
+  }
+  providersLiveJobs = {};
+}
+
+function startProvidersLivePolling(jobIdsByProvider) {
+  stopProvidersLivePolling();
+  providersLiveJobs = jobIdsByProvider;
+
+  providersLivePollTimer = setInterval(async () => {
+    const providers = Object.keys(providersLiveJobs);
+    let allDone = true;
+
+    for (const provider of providers) {
+      const jobId = providersLiveJobs[provider];
+      if (!jobId) continue;
+      try {
+        const res = await fetch(`${API_BASE}/api/jobs/${jobId}`, {
+          headers: authHeaders(),
+        });
+        const job = await res.json();
+
+        const node = terminalElForProvider(provider);
+        if (node) {
+          if (job.status === "failed") {
+            node.textContent = `JOB FAILED (status=${job.status})\\n\\n${job.error || ""}`;
+          } else {
+            const transcript =
+              (job.result && (job.result.transcript || job.result)) || "";
+            node.textContent = typeof transcript === "string" ? transcript : JSON.stringify(transcript, null, 2);
+          }
+        }
+
+        if (job.status !== "succeeded" && job.status !== "failed") {
+          allDone = false;
+        }
+      } catch (error) {
+        allDone = false;
+        const node = terminalElForProvider(provider);
+        if (node) node.textContent = `Error polling job ${jobId}: ${error.message}`;
+      }
+    }
+
+    if (allDone) {
+      stopProvidersLivePolling();
+      setStatusMessage("Providers live run finished. Terminals updated.");
+      el("runProvidersLiveBtn").disabled = false;
+    }
+  }, 1200);
+}
+
+async function runProvidersLive() {
+  if (!activeTaskId) return;
+  const providers = getSelectedProviders();
+  if (!providers.length) {
+    setStatusMessage("Select at least one provider first.");
+    return;
+  }
+
+  const mode = el("providerMode").value;
+  clearProviderTerminals(providers);
+  el("runProvidersLiveBtn").disabled = true;
+
+  setStatusMessage(`Queued live runs for ${providers.length} provider(s)...`);
+  const jobIdsByProvider = {};
+
+  for (const provider of providers) {
+    const payload = {
+      job_type: "dispatch_live_pipeline",
+      params: { provider, mode, phases: ["implement", "tests_fix"] },
+    };
+    const res = await fetch(`${API_BASE}/api/tasks/${activeTaskId}/jobs`, {
+      method: "POST",
+      headers: authHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    jobIdsByProvider[provider] = data.job_id;
+  }
+
+  startProvidersLivePolling(jobIdsByProvider);
+}
+
 async function executeSshCommand() {
   if (!activeTaskId) return;
   const payload = {
@@ -417,6 +517,12 @@ el("dispatchBtn").addEventListener("click", () => {
 
 el("dispatchManyBtn").addEventListener("click", () => {
   dispatchSelectedProviders().catch((error) => {
+    el("taskOutput").textContent = `Error: ${error.message}`;
+  });
+});
+
+el("runProvidersLiveBtn").addEventListener("click", () => {
+  runProvidersLive().catch((error) => {
     el("taskOutput").textContent = `Error: ${error.message}`;
   });
 });

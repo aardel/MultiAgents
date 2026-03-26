@@ -68,14 +68,26 @@ def _run_cli_probe(cli: str) -> tuple[bool, str, str]:
         return False, f"{cli} --version", f"CLI probe failed: {exc}"
 
 
-def _build_provider_prompt(task: TaskState, provider: str) -> str:
+def _build_provider_prompt(task: TaskState, provider: str, phase: str) -> str:
     capability = PROVIDER_CAPABILITIES.get(provider, "general coding tasks")
-    return (
+    base = (
         f"You are provider '{provider}' focused on {capability}. "
         f"Work on this repository task: {task.user_goal}. "
-        "Make concrete code changes in the current repository, "
-        "prefer small safe commits, and include tests where reasonable."
+        "Make concrete code changes in the current repository. "
     )
+    if phase == "implement":
+        return (
+            base
+            + "Phase 1: implement the requested feature(s) with minimal, safe edits. "
+            + "Create/modify relevant files."
+        )
+    if phase == "tests_fix":
+        return (
+            base
+            + "Phase 2: add/adjust tests and fix any issues surfaced by tests. "
+            + "If a standard test command exists, run it and address failures."
+        )
+    return base + "Work on the task."
 
 
 def _attempt_cli_execution(
@@ -139,6 +151,7 @@ def dispatch_task_to_provider(
     provider: str,
     mode: str = "auto",
     repo_path: str | None = None,
+    phase: str = "implement",
 ) -> DispatchTaskResponse:
     key = provider.strip().lower()
     if key not in PROVIDER_MAP:
@@ -156,7 +169,7 @@ def dispatch_task_to_provider(
 
     mode_used = mode
     output = ""
-    prompt_sent = _build_provider_prompt(task, key)
+    prompt_sent = _build_provider_prompt(task, key, phase)
     executed = False
     if mode == "auto":
         ok, command, probe = _run_cli_probe(cli)

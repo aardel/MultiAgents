@@ -261,6 +261,64 @@ def _process_job(job_id: str) -> None:
         elif job.job_type == "dispatch":
             resp = dispatch_task(job.task_id, DispatchTaskRequest(**job.params))
             job.result = resp.model_dump(mode="json")
+        elif job.job_type == "dispatch_live_pipeline":
+            task = _get_task_or_404(job.task_id)
+            provider = str(job.params.get("provider", "")).strip()
+            mode = str(job.params.get("mode", "auto"))
+            phases = job.params.get("phases") or ["implement", "tests_fix"]
+
+            repo_path = _get_connected_local_path_or_400()
+            if not ensure_git_repo(repo_path):
+                raise HTTPException(
+                    status_code=400,
+                    detail="Connected local path is not a git repo",
+                )
+
+            branch = task.branch_name or create_feature_branch(task.task_id)
+            checkout_task_branch(repo_path, branch)
+
+            phases_out: list[dict[str, object]] = []
+            transcript_parts: list[str] = []
+
+            for phase in phases:
+                result = dispatch_task_to_provider(
+                    task,
+                    provider=provider,
+                    mode=mode,
+                    repo_path=repo_path,
+                    phase=str(phase),
+                )
+                transcript_parts.append(
+                    f"\n=== {provider} / {phase} ===\n{result.output}\n"
+                )
+
+                add_task_event(
+                    job.task_id,
+                    "provider_phase",
+                    f"Provider={result.provider} phase={phase} executed={result.executed}",
+                )
+                if result.output:
+                    task.execution_log.append(
+                        f"[provider:{result.provider} phase:{phase}] {result.output}"
+                    )
+                phases_out.append(
+                    {
+                        "phase": phase,
+                        "provider": result.provider,
+                        "mode_used": result.mode_used,
+                        "executed": result.executed,
+                        "output": result.output,
+                        "command_flow": result.command_flow,
+                    }
+                )
+
+            save_task(task)
+            job.result = {
+                "provider": provider,
+                "mode": mode,
+                "phases": phases_out,
+                "transcript": "\n".join(transcript_parts).strip(),
+            }
         else:
             raise ValueError(f"Unsupported job_type: {job.job_type}")
         job.status = JobStatus.SUCCEEDED
