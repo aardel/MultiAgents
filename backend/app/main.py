@@ -7,6 +7,9 @@ import logging
 import time
 import os
 import json
+import queue
+import threading
+from datetime import datetime, timezone
 
 from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -32,7 +35,12 @@ from app.models import (
     PullRequestStatusResponse,
     MergePullRequestRequest,
     MergePullRequestResponse,
+    EnqueueJobRequest,
+    EnqueueJobResponse,
+    ExecuteSshRequest,
     TaskState,
+    TaskJob,
+    JobStatus,
     TaskStatus,
 )
 from app.config import allowed_origins, api_key, previous_api_key, validate_runtime_config
@@ -59,9 +67,11 @@ from app.services.persistence import (
     add_task_event,
     get_value,
     init_db,
+    load_task_job,
     list_task_events,
     load_task,
     save_task,
+    save_task_job,
     set_value,
 )
 from app.services.preflight import run_preflight
@@ -75,6 +85,8 @@ if not logger.handlers:
 
 RATE_LIMIT_PER_MIN = int(os.environ.get("AGENT_ORCH_RATE_LIMIT_PER_MIN", "120"))
 _RATE_BUCKETS: dict[str, list[float]] = {}
+JOB_QUEUE: "queue.Queue[str]" = queue.Queue()
+WORKER_STARTED = False
 
 
 def _log_json(event: str, **fields: object) -> None:
@@ -84,6 +96,10 @@ def _log_json(event: str, **fields: object) -> None:
 
 def reset_rate_limit_state() -> None:
     _RATE_BUCKETS.clear()
+
+
+def _utc_now() -> str:
+    return datetime.now(timezone.utc).isoformat()
 
 
 def _is_rate_limited(client_key: str) -> tuple[bool, int]:
@@ -111,8 +127,13 @@ def require_api_key(x_api_key: Optional[str] = Header(default=None)) -> None:
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    global WORKER_STARTED
     validate_runtime_config()
     init_db()
+    if not WORKER_STARTED:
+        t = threading.Thread(target=_worker_loop, daemon=True, name="job-worker")
+        t.start()
+        WORKER_STARTED = True
     yield
 
 
@@ -188,6 +209,13 @@ def _get_task_or_404(task_id: str) -> TaskState:
     return task
 
 
+def _get_job_or_404(job_id: str) -> TaskJob:
+    job = load_task_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return job
+
+
 def _get_connected_local_path_or_400() -> str:
     mode = get_value("connected_mode")
     path = get_value("connected_path")
@@ -204,6 +232,49 @@ def _get_connected_ssh_or_400() -> tuple[str, str, str]:
     if mode != "ssh" or not user or not host or not path:
         raise HTTPException(status_code=400, detail="No SSH project connected")
     return user, host, path
+
+
+def _process_job(job_id: str) -> None:
+    job = load_task_job(job_id)
+    if not job:
+        return
+    job.status = JobStatus.RUNNING
+    job.updated_at = _utc_now()
+    save_task_job(job)
+    add_task_event(job.task_id, "job_running", f"Job {job.job_id} started ({job.job_type}).")
+    try:
+        if job.job_type == "run_all":
+            resp = run_all(job.task_id, RunAllRequest(**job.params))
+            job.result = resp.model_dump(mode="json")
+        elif job.job_type == "execute_local":
+            resp = execute_task_local(job.task_id)
+            job.result = resp.model_dump(mode="json")
+        elif job.job_type == "execute_ssh":
+            resp = execute_task_ssh(job.task_id, ExecuteSshRequest(**job.params))
+            job.result = resp.model_dump(mode="json")
+        elif job.job_type == "dispatch":
+            resp = dispatch_task(job.task_id, DispatchTaskRequest(**job.params))
+            job.result = resp.model_dump(mode="json")
+        else:
+            raise ValueError(f"Unsupported job_type: {job.job_type}")
+        job.status = JobStatus.SUCCEEDED
+        add_task_event(job.task_id, "job_succeeded", f"Job {job.job_id} completed.")
+    except Exception as exc:
+        job.status = JobStatus.FAILED
+        job.error = str(exc)
+        add_task_event(job.task_id, "job_failed", f"Job {job.job_id} failed: {exc}")
+    finally:
+        job.updated_at = _utc_now()
+        save_task_job(job)
+
+
+def _worker_loop() -> None:
+    while True:
+        job_id = JOB_QUEUE.get()
+        try:
+            _process_job(job_id)
+        finally:
+            JOB_QUEUE.task_done()
 
 
 @app.get("/health")
@@ -290,6 +361,33 @@ def dispatch_task(
     task.execution_log.append(result.output)
     save_task(task)
     return result
+
+
+@app.post("/api/tasks/{task_id}/jobs", response_model=EnqueueJobResponse)
+def enqueue_task_job(
+    task_id: str,
+    payload: EnqueueJobRequest,
+    _: None = Depends(require_api_key),
+) -> EnqueueJobResponse:
+    _get_task_or_404(task_id)
+    job = TaskJob(
+        job_id=uuid4().hex[:10],
+        task_id=task_id,
+        job_type=payload.job_type,
+        status=JobStatus.QUEUED,
+        params=payload.params,
+        created_at=_utc_now(),
+        updated_at=_utc_now(),
+    )
+    save_task_job(job)
+    add_task_event(task_id, "job_queued", f"Job {job.job_id} queued ({job.job_type}).")
+    JOB_QUEUE.put(job.job_id)
+    return EnqueueJobResponse(job_id=job.job_id, status=job.status)
+
+
+@app.get("/api/jobs/{job_id}", response_model=TaskJob)
+def get_task_job(job_id: str, _: None = Depends(require_api_key)) -> TaskJob:
+    return _get_job_or_404(job_id)
 
 
 @app.post("/api/projects/connect", response_model=ConnectProjectResponse)

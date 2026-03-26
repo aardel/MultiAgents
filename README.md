@@ -133,9 +133,11 @@ GitHub Actions workflow at `.github/workflows/ci.yml` runs backend tests on push
 6. Click "Prepare PR Draft" to generate title/body for GitHub PR
 7. Click "Create GitHub PR" for one-click push + PR creation (requires `gh auth login`)
 8. Or click "Run All" to execute local, commit, and open PR in one step
-9. Follow the timeline chips to see current stage and failures clearly
-10. Read the plain-English status message for what to do next
-11. If tests fail, click "Fix It For Me" to auto-create a recovery task
+9. Or click "Run Async" to queue a background pipeline and monitor job status
+10. Follow the timeline chips to see current stage and failures clearly
+11. Read the plain-English status message for what to do next
+12. If tests fail, click "Fix It For Me" to auto-create a recovery task
+13. Use advanced controls to check providers, dispatch tasks, run SSH command, and view task events
 
 ## Next steps
 

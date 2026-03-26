@@ -1,6 +1,8 @@
 const API_BASE = "http://localhost:8000";
 const API_KEY = localStorage.getItem("agent_orch_api_key") || "dev-key";
 let activeTaskId = null;
+let activeJobId = null;
+let jobPollTimer = null;
 const STAGES = ["planning", "executing", "committing", "pr"];
 
 const el = (id) => document.getElementById(id);
@@ -15,6 +17,10 @@ function authHeaders(extra = {}) {
 
 function setStatusMessage(message) {
   el("statusMessage").textContent = message;
+}
+
+function setJobStatus(message) {
+  el("jobStatus").textContent = message;
 }
 
 function setTimeline(state, mode = "active") {
@@ -76,7 +82,11 @@ async function createTask() {
   el("preparePrBtn").disabled = false;
   el("createPrBtn").disabled = false;
   el("runAllBtn").disabled = false;
+  el("runAsyncBtn").disabled = false;
   el("fixBtn").disabled = false;
+  el("dispatchBtn").disabled = false;
+  el("sshExecBtn").disabled = false;
+  el("eventsBtn").disabled = false;
   setTimeline("planning", "active");
   setStatusMessage("Task created. Review plan, then run Execute Local or Run All.");
   el("taskOutput").textContent = pretty(data);
@@ -185,6 +195,109 @@ async function runAll() {
   el("taskOutput").textContent = pretty(data);
 }
 
+async function enqueueAsyncRun() {
+  if (!activeTaskId) return;
+  setTimeline("executing", "active");
+  setStatusMessage("Queued background run. You can keep using the app.");
+  const payload = { job_type: "run_all", params: { base_branch: el("baseBranch").value || "main" } };
+  const res = await fetch(`${API_BASE}/api/tasks/${activeTaskId}/jobs`, {
+    method: "POST",
+    headers: authHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify(payload),
+  });
+  const data = await res.json();
+  activeJobId = data.job_id;
+  setJobStatus(`Job ${activeJobId} queued...`);
+  startJobPolling();
+  el("taskOutput").textContent = pretty(data);
+}
+
+async function checkProviders() {
+  const res = await fetch(`${API_BASE}/api/providers`, { headers: authHeaders() });
+  const data = await res.json();
+  el("taskOutput").textContent = pretty(data);
+  setStatusMessage("Provider readiness loaded.");
+}
+
+async function dispatchProviderTask() {
+  if (!activeTaskId) return;
+  const payload = {
+    provider: el("providerSelect").value,
+    mode: el("providerMode").value,
+  };
+  const res = await fetch(`${API_BASE}/api/tasks/${activeTaskId}/dispatch`, {
+    method: "POST",
+    headers: authHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify(payload),
+  });
+  const data = await res.json();
+  setStatusMessage(`Task dispatched via ${payload.provider} (${payload.mode}).`);
+  el("taskOutput").textContent = pretty(data);
+}
+
+async function executeSshCommand() {
+  if (!activeTaskId) return;
+  const payload = {
+    command: el("sshCommand").value || "pwd",
+    timeout_seconds: 60,
+  };
+  const res = await fetch(`${API_BASE}/api/tasks/${activeTaskId}/execute-ssh`, {
+    method: "POST",
+    headers: authHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify(payload),
+  });
+  const data = await res.json();
+  if (data.success) {
+    setStatusMessage("SSH command executed successfully.");
+  } else {
+    setStatusMessage("SSH command failed. Review output.");
+  }
+  el("taskOutput").textContent = pretty(data);
+}
+
+async function loadTaskEvents() {
+  if (!activeTaskId) return;
+  const res = await fetch(`${API_BASE}/api/tasks/${activeTaskId}/events`, {
+    headers: authHeaders(),
+  });
+  const data = await res.json();
+  setStatusMessage("Loaded task event history.");
+  el("taskOutput").textContent = pretty(data);
+}
+
+function stopJobPolling() {
+  if (jobPollTimer) {
+    clearInterval(jobPollTimer);
+    jobPollTimer = null;
+  }
+}
+
+function startJobPolling() {
+  stopJobPolling();
+  jobPollTimer = setInterval(async () => {
+    if (!activeJobId) return;
+    try {
+      const res = await fetch(`${API_BASE}/api/jobs/${activeJobId}`, { headers: authHeaders() });
+      const job = await res.json();
+      setJobStatus(`Job ${activeJobId}: ${job.status}`);
+      if (job.status === "succeeded") {
+        stopJobPolling();
+        setTimeline("pr", "done");
+        setStatusMessage("Async run completed successfully.");
+        el("taskOutput").textContent = pretty(job);
+      } else if (job.status === "failed") {
+        stopJobPolling();
+        setTimeline("executing", "error");
+        setStatusMessage("Async run failed. Check output and retry.");
+        el("taskOutput").textContent = pretty(job);
+      }
+    } catch (error) {
+      stopJobPolling();
+      setJobStatus(`Job polling error: ${error.message}`);
+    }
+  }, 1200);
+}
+
 async function fixItForMe() {
   if (!activeTaskId) return;
   setStatusMessage("Creating an automatic recovery task from failure logs...");
@@ -247,8 +360,38 @@ el("runAllBtn").addEventListener("click", () => {
   });
 });
 
+el("runAsyncBtn").addEventListener("click", () => {
+  enqueueAsyncRun().catch((error) => {
+    el("taskOutput").textContent = `Error: ${error.message}`;
+  });
+});
+
 el("fixBtn").addEventListener("click", () => {
   fixItForMe().catch((error) => {
+    el("taskOutput").textContent = `Error: ${error.message}`;
+  });
+});
+
+el("providersBtn").addEventListener("click", () => {
+  checkProviders().catch((error) => {
+    el("taskOutput").textContent = `Error: ${error.message}`;
+  });
+});
+
+el("dispatchBtn").addEventListener("click", () => {
+  dispatchProviderTask().catch((error) => {
+    el("taskOutput").textContent = `Error: ${error.message}`;
+  });
+});
+
+el("sshExecBtn").addEventListener("click", () => {
+  executeSshCommand().catch((error) => {
+    el("taskOutput").textContent = `Error: ${error.message}`;
+  });
+});
+
+el("eventsBtn").addEventListener("click", () => {
+  loadTaskEvents().catch((error) => {
     el("taskOutput").textContent = `Error: ${error.message}`;
   });
 });

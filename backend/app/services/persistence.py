@@ -7,7 +7,7 @@ from pathlib import Path
 from uuid import uuid4
 from datetime import datetime, timezone
 
-from app.models import TaskEvent, TaskState
+from app.models import TaskEvent, TaskJob, TaskState
 
 DB_PATH = Path(
     os.environ.get("AGENT_ORCH_DB_PATH", str(Path(__file__).resolve().parents[2] / "data.db"))
@@ -61,6 +61,15 @@ def init_db() -> None:
                     )
                     """
                 )
+                cur.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS task_jobs (
+                        job_id TEXT PRIMARY KEY,
+                        task_id TEXT NOT NULL,
+                        payload TEXT NOT NULL
+                    )
+                    """
+                )
             conn.commit()
         return
 
@@ -89,6 +98,15 @@ def init_db() -> None:
                 event_type TEXT NOT NULL,
                 message TEXT NOT NULL,
                 created_at TEXT NOT NULL
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS task_jobs (
+                job_id TEXT PRIMARY KEY,
+                task_id TEXT NOT NULL,
+                payload TEXT NOT NULL
             )
             """
         )
@@ -262,3 +280,43 @@ def list_task_events(task_id: str) -> list[TaskEvent]:
         )
         for row in rows
     ]
+
+
+def save_task_job(job: TaskJob) -> None:
+    payload = json.dumps(job.model_dump(mode="json"))
+    if USE_POSTGRES:
+        with _postgres_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO task_jobs(job_id, task_id, payload)
+                    VALUES (%s, %s, %s)
+                    ON CONFLICT (job_id) DO UPDATE SET payload = EXCLUDED.payload
+                    """,
+                    (job.job_id, job.task_id, payload),
+                )
+            conn.commit()
+        return
+
+    with _sqlite_conn() as conn:
+        conn.execute(
+            "INSERT OR REPLACE INTO task_jobs(job_id, task_id, payload) VALUES (?, ?, ?)",
+            (job.job_id, job.task_id, payload),
+        )
+
+
+def load_task_job(job_id: str) -> TaskJob | None:
+    if USE_POSTGRES:
+        with _postgres_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT payload FROM task_jobs WHERE job_id = %s", (job_id,))
+                row = cur.fetchone()
+        if not row:
+            return None
+        return TaskJob.model_validate(json.loads(row[0]))
+
+    with _sqlite_conn() as conn:
+        row = conn.execute("SELECT payload FROM task_jobs WHERE job_id = ?", (job_id,)).fetchone()
+    if not row:
+        return None
+    return TaskJob.model_validate(json.loads(row["payload"]))

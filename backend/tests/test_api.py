@@ -1,4 +1,5 @@
 import os
+import time
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -188,6 +189,36 @@ def test_execute_ssh_uses_connected_ssh_target(monkeypatch) -> None:
         body = executed.json()
         assert body["success"] is True
         assert body["exit_code"] == 0
+
+
+def test_enqueue_and_poll_job() -> None:
+    _reset_db()
+    with TestClient(app) as client:
+        created = client.post(
+            "/api/tasks",
+            json={"project_label": "Demo", "user_goal": "Dispatch via queue"},
+            headers=_headers(),
+        )
+        task_id = created.json()["task_id"]
+
+        enq = client.post(
+            f"/api/tasks/{task_id}/jobs",
+            json={"job_type": "dispatch", "params": {"provider": "codex", "mode": "api"}},
+            headers=_headers(),
+        )
+        assert enq.status_code == 200
+        job_id = enq.json()["job_id"]
+
+        status = None
+        for _ in range(20):
+            job = client.get(f"/api/jobs/{job_id}", headers=_headers())
+            assert job.status_code == 200
+            status = job.json()["status"]
+            if status in ("succeeded", "failed"):
+                break
+            time.sleep(0.05)
+
+        assert status == "succeeded"
 
 
 def test_github_pr_status_endpoint(monkeypatch) -> None:

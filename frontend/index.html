@@ -82,7 +82,40 @@
           <button id="preparePrBtn" disabled>Prepare PR Draft</button>
           <button id="createPrBtn" disabled>Create GitHub PR</button>
           <button id="runAllBtn" disabled>Run All</button>
+          <button id="runAsyncBtn" disabled>Run Async</button>
           <button id="fixBtn" disabled>Fix It For Me</button>
+        </div>
+        <p id="jobStatus" class="status-message">No background job running.</p>
+        <div class="row">
+          <label>
+            Provider
+            <select id="providerSelect">
+              <option value="codex">codex</option>
+              <option value="claude">claude</option>
+              <option value="gemini">gemini</option>
+              <option value="openai">openai</option>
+              <option value="copilot">copilot</option>
+              <option value="cursor">cursor</option>
+            </select>
+          </label>
+          <label>
+            Provider Mode
+            <select id="providerMode">
+              <option value="auto">auto</option>
+              <option value="cli">cli</option>
+              <option value="api">api</option>
+            </select>
+          </label>
+          <label>
+            SSH Command
+            <input id="sshCommand" value="pwd" />
+          </label>
+        </div>
+        <div class="row">
+          <button id="providersBtn">Check Providers</button>
+          <button id="dispatchBtn" disabled>Dispatch Provider Task</button>
+          <button id="sshExecBtn" disabled>Execute SSH Command</button>
+          <button id="eventsBtn" disabled>Load Task Events</button>
         </div>
         <pre id="taskOutput"></pre>
       </section>

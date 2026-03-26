@@ -144,3 +144,32 @@ class MergePullRequestResponse(BaseModel):
     pull_request_number: int
     merged: bool
     message: str
+
+
+class JobStatus(str, Enum):
+    QUEUED = "queued"
+    RUNNING = "running"
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+
+
+class TaskJob(BaseModel):
+    job_id: str
+    task_id: str
+    job_type: str
+    status: JobStatus
+    params: dict = Field(default_factory=dict)
+    result: dict = Field(default_factory=dict)
+    error: str = ""
+    created_at: str
+    updated_at: str
+
+
+class EnqueueJobRequest(BaseModel):
+    job_type: str
+    params: dict = Field(default_factory=dict)
+
+
+class EnqueueJobResponse(BaseModel):
+    job_id: str
+    status: JobStatus
