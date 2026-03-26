@@ -31,8 +31,24 @@ CLI_EXEC_CANDIDATES = {
         ["codex", "exec", "--sandbox", "workspace-write", "{prompt}"],
         ["codex", "exec", "--sandbox", "workspace-write", "-p", "{prompt}"],
     ],
-    "claude": [["claude", "-p", "{prompt}"], ["claude", "{prompt}"]],
-    "gemini": [["gemini", "-p", "{prompt}"], ["gemini", "{prompt}"]],
+    "claude": [
+        [
+            "claude",
+            "--permission-mode",
+            "auto_edit",
+            "--tools",
+            "Bash,Edit,Read",
+            "--allowed-tools",
+            "Bash(git:*),Edit,Read",
+            "-p",
+            "{prompt}",
+        ],
+        ["claude", "--permission-mode", "auto_edit", "-p", "{prompt}"],
+    ],
+    "gemini": [
+        ["gemini", "--approval-mode", "auto_edit", "-p", "{prompt}"],
+        ["gemini", "-p", "{prompt}"],
+    ],
     "openai": [["openai", "api", "responses.create", "--input", "{prompt}"]],
     "copilot": [["gh", "copilot", "suggest", "{prompt}"]],
     "cursor": [["cursor-agent", "-p", "{prompt}"], ["cursor-agent", "{prompt}"]],
@@ -77,6 +93,17 @@ def _attempt_cli_execution(
         flow.append("no_cli_exec_templates")
         return False, ""
 
+    # Codex generally needs more time; Claude may be slower to initialize.
+    # Keep Gemini tighter to avoid long stalls.
+    per_provider_timeout = {
+        "codex": 120,
+        "claude": 90,
+        "gemini": 60,
+        "openai": 60,
+        "copilot": 45,
+        "cursor": 60,
+    }.get(provider, 60)
+
     for template in candidates:
         args = [part.replace("{prompt}", prompt) for part in template]
         flow.append("try_exec: " + shlex.join(args))
@@ -86,7 +113,7 @@ def _attempt_cli_execution(
                 cwd=repo_path,
                 capture_output=True,
                 text=True,
-                timeout=120,
+                timeout=per_provider_timeout,
             )
             output = ((completed.stdout or "") + "\n" + (completed.stderr or "")).strip()
             flow.append(f"exec_exit_code={completed.returncode}")
@@ -113,7 +140,10 @@ def dispatch_task_to_provider(
     api_env = spec["api_env"]
     has_api = bool(os.environ.get(api_env, "").strip())
     flow: list[str] = [f"provider={key}", f"requested_mode={mode}", f"cli={cli}", f"api_env={api_env}"]
-    allow_execution = key == "codex" or has_api
+    # Prefer CLI authentication/workflows. If the provider CLI is available and
+    # we have a repo path, we attempt the non-interactive workload execution
+    # regardless of whether a matching API env var is set.
+    allow_execution = repo_path is not None and key in CLI_EXEC_CANDIDATES
 
     mode_used = mode
     output = ""
@@ -128,22 +158,13 @@ def dispatch_task_to_provider(
             output = f"Dispatched via {provider} CLI. Probe output: {probe}"
             flow.append("mode_selected=cli")
             if repo_path:
-                if allow_execution:
-                    ran, exec_output = _attempt_cli_execution(
-                        key, prompt_sent, repo_path, flow
-                    )
-                    executed = ran
-                    if ran:
-                        excerpt = exec_output[:1200] if exec_output else "(no output)"
-                        output = (
-                            f"Executed via {provider} CLI with workload prompt. "
-                            f"Output excerpt: {excerpt}"
-                        )
-                else:
-                    flow.append("skip_exec_missing_api_env=true")
+                ran, exec_output = _attempt_cli_execution(key, prompt_sent, repo_path, flow) if allow_execution else (False, "")
+                executed = ran
+                if ran:
+                    excerpt = exec_output[:1200] if exec_output else "(no output)"
                     output = (
-                        f"Dispatched via {provider} CLI (probe ok), but workload exec "
-                        f"skipped: missing env var {api_env}."
+                        f"Executed via {provider} CLI with workload prompt. "
+                        f"Output excerpt: {excerpt}"
                     )
         elif has_api:
             mode_used = "api"
@@ -167,22 +188,13 @@ def dispatch_task_to_provider(
         )
         flow.append("mode_selected=cli")
         if ok and repo_path:
-            if allow_execution:
-                ran, exec_output = _attempt_cli_execution(
-                    key, prompt_sent, repo_path, flow
-                )
-                executed = ran
-                if ran:
-                    excerpt = exec_output[:1200] if exec_output else "(no output)"
-                    output = (
-                        f"Executed via {provider} CLI with workload prompt. "
-                        f"Output excerpt: {excerpt}"
-                    )
-            else:
-                flow.append("skip_exec_missing_api_env=true")
+            ran, exec_output = _attempt_cli_execution(key, prompt_sent, repo_path, flow) if allow_execution else (False, "")
+            executed = ran
+            if ran:
+                excerpt = exec_output[:1200] if exec_output else "(no output)"
                 output = (
-                    f"Dispatched via {provider} CLI (probe ok), but workload exec "
-                    f"skipped: missing env var {api_env}."
+                    f"Executed via {provider} CLI with workload prompt. "
+                    f"Output excerpt: {excerpt}"
                 )
     elif mode == "api":
         mode_used = "api"
