@@ -158,10 +158,20 @@ GitHub Actions workflow at `.github/workflows/ci.yml` runs backend tests on push
 
 ## Next steps
 
-- Add real git worktree execution
-- Add provider adapters for each AI CLI
-- Add GitHub PR creation and CI checks
-- Add richer auth and role-based access
-- Expand backend test coverage
+### Done
+
+- GitHub PR creation and CI checks are implemented.
+- Background async job orchestration with polling is implemented.
+- Provider readiness and dispatch endpoints are implemented.
+
+### In progress
+
+- Provider adapters for each AI CLI (baseline support exists; broaden and harden provider-specific behavior).
+- Backend test coverage expansion (tests exist; continue broadening edge-case and integration coverage).
+
+### Planned
+
+- Real git worktree execution for stronger task isolation.
+- Richer authentication and role-based access control.
 
 See `PROJECT_OBJECTIVES.md` for a concise problem statement, scope boundaries, and phased roadmap.
