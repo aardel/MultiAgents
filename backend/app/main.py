@@ -29,6 +29,8 @@ from app.models import (
     ProvidersResponse,
     DispatchTaskRequest,
     DispatchTaskResponse,
+    DispatchManyTaskRequest,
+    DispatchManyTaskResponse,
     ExecuteSshRequest,
     ExecuteSshResponse,
     PullRequestStatusRequest,
@@ -361,6 +363,45 @@ def dispatch_task(
     task.execution_log.append(result.output)
     save_task(task)
     return result
+
+
+@app.post("/api/tasks/{task_id}/dispatch-many", response_model=DispatchManyTaskResponse)
+def dispatch_task_many(
+    task_id: str,
+    payload: DispatchManyTaskRequest,
+    _: None = Depends(require_api_key),
+) -> DispatchManyTaskResponse:
+    task = _get_task_or_404(task_id)
+    seen: set[str] = set()
+    normalized_providers: list[str] = []
+    for provider in payload.providers:
+        key = provider.strip().lower()
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        normalized_providers.append(key)
+
+    if not normalized_providers:
+        raise HTTPException(status_code=400, detail="No valid providers provided.")
+
+    results: list[DispatchTaskResponse] = []
+    for provider in normalized_providers:
+        try:
+            result = dispatch_task_to_provider(task, provider, payload.mode)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        add_task_event(
+            task_id,
+            "task_dispatched",
+            f"Provider={result.provider} mode={result.mode_used}: {result.output}",
+        )
+        task.execution_log.append(
+            f"[multi-dispatch] Provider={result.provider} mode={result.mode_used}: {result.output}"
+        )
+        results.append(result)
+
+    save_task(task)
+    return DispatchManyTaskResponse(task_id=task_id, mode=payload.mode, results=results)
 
 
 @app.post("/api/tasks/{task_id}/jobs", response_model=EnqueueJobResponse)

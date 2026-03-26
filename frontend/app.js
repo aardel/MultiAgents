@@ -85,6 +85,7 @@ async function createTask() {
   el("runAsyncBtn").disabled = false;
   el("fixBtn").disabled = false;
   el("dispatchBtn").disabled = false;
+  el("dispatchManyBtn").disabled = false;
   el("sshExecBtn").disabled = false;
   el("eventsBtn").disabled = false;
   setTimeline("planning", "active");
@@ -221,8 +222,10 @@ async function checkProviders() {
 
 async function dispatchProviderTask() {
   if (!activeTaskId) return;
+  const selected = getSelectedProviders();
+  const provider = selected[0] || "codex";
   const payload = {
-    provider: el("providerSelect").value,
+    provider,
     mode: el("providerMode").value,
   };
   const res = await fetch(`${API_BASE}/api/tasks/${activeTaskId}/dispatch`, {
@@ -232,6 +235,34 @@ async function dispatchProviderTask() {
   });
   const data = await res.json();
   setStatusMessage(`Task dispatched via ${payload.provider} (${payload.mode}).`);
+  el("taskOutput").textContent = pretty(data);
+}
+
+function getSelectedProviders() {
+  const select = el("providerSelect");
+  return Array.from(select.selectedOptions).map((opt) => opt.value);
+}
+
+async function dispatchSelectedProviders() {
+  if (!activeTaskId) return;
+  const providers = getSelectedProviders();
+  if (!providers.length) {
+    setStatusMessage("Select at least one provider first.");
+    return;
+  }
+  const payload = {
+    providers,
+    mode: el("providerMode").value,
+  };
+  const res = await fetch(`${API_BASE}/api/tasks/${activeTaskId}/dispatch-many`, {
+    method: "POST",
+    headers: authHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify(payload),
+  });
+  const data = await res.json();
+  setStatusMessage(
+    `Dispatched to ${providers.length} provider(s) in ${payload.mode} mode.`
+  );
   el("taskOutput").textContent = pretty(data);
 }
 
@@ -380,6 +411,12 @@ el("providersBtn").addEventListener("click", () => {
 
 el("dispatchBtn").addEventListener("click", () => {
   dispatchProviderTask().catch((error) => {
+    el("taskOutput").textContent = `Error: ${error.message}`;
+  });
+});
+
+el("dispatchManyBtn").addEventListener("click", () => {
+  dispatchSelectedProviders().catch((error) => {
     el("taskOutput").textContent = `Error: ${error.message}`;
   });
 });

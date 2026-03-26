@@ -110,6 +110,17 @@ class DispatchTaskResponse(BaseModel):
     output: str
 
 
+class DispatchManyTaskRequest(BaseModel):
+    providers: list[str] = Field(min_length=1)
+    mode: str = "auto"
+
+
+class DispatchManyTaskResponse(BaseModel):
+    task_id: str
+    mode: str
+    results: list[DispatchTaskResponse]
+
+
 class ExecuteSshRequest(BaseModel):
     command: str = "pwd"
     timeout_seconds: int = 60

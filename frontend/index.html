@@ -89,7 +89,7 @@
         <div class="row">
           <label>
             Provider
-            <select id="providerSelect">
+            <select id="providerSelect" multiple size="6">
               <option value="codex">codex</option>
               <option value="claude">claude</option>
               <option value="gemini">gemini</option>
@@ -114,6 +114,7 @@
         <div class="row">
           <button id="providersBtn">Check Providers</button>
           <button id="dispatchBtn" disabled>Dispatch Provider Task</button>
+          <button id="dispatchManyBtn" disabled>Dispatch Selected Providers</button>
           <button id="sshExecBtn" disabled>Execute SSH Command</button>
           <button id="eventsBtn" disabled>Load Task Events</button>
         </div>
